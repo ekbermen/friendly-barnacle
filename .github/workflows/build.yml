@@ -1,0 +1,87 @@
+name: AURA APK Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu çek
+        uses: actions/checkout@v4
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter kur
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Dosyaları klasörlere yerleştir
+        shell: bash
+        run: |
+          mkdir -p lib/core lib/widgets
+          mkdir -p lib/features/auth lib/features/fal lib/features/burclar
+          mkdir -p lib/features/uyum lib/features/aura_zihni
+          mkdir -p lib/features/ritual lib/features/ayarlar
+
+          mv_if() { [ -f "$1" ] && mv "$1" "$2" || true; }
+
+          for f in aura_colors auth_service moon readings zodiac; do mv_if $f.dart lib/core/; done
+          mv_if widgets.dart lib/widgets/
+          mv_if main.dart lib/
+          mv_if shell.dart lib/features/
+          mv_if auth_screen.dart lib/features/auth/
+          mv_if fal_page.dart lib/features/fal/
+          mv_if burclar_page.dart lib/features/burclar/
+          mv_if uyum_page.dart lib/features/uyum/
+          mv_if aura_zihni_page.dart lib/features/aura_zihni/
+          mv_if ritual_page.dart lib/features/ritual/
+          mv_if ayarlar_page.dart lib/features/ayarlar/
+
+          find lib -type f
+
+      - name: Android iskeletini oluştur
+        shell: bash
+        run: |
+          if [ ! -d android ]; then
+            rm -rf /tmp/bak && mkdir -p /tmp/bak
+            cp -r lib /tmp/bak/lib
+            cp pubspec.yaml /tmp/bak/pubspec.yaml
+            flutter create --platforms=android --org com.aura --project-name aura --no-pub .
+            rm -rf lib && cp -r /tmp/bak/lib lib
+            cp /tmp/bak/pubspec.yaml pubspec.yaml
+          fi
+          rm -f test/widget_test.dart
+
+      - name: Uygulama adını AURA yap
+        run: sed -i 's/android:label="[^"]*"/android:label="AURA"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Paketleri indir
+        run: flutter pub get
+
+      - name: APK üret
+        run: flutter build apk --release --split-per-abi
+
+      - name: APK'ları yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-apk
+          path: build/app/outputs/flutter-apk/*.apk
+
+      - name: GitHub Release (v* etiketi)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/*.apk
